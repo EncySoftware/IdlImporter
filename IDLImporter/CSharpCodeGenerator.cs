@@ -1206,6 +1206,9 @@ namespace SIL.IdlImporterTool
 		{
 			this.Output.Write("using ");
 			this.OutputIdentifier(e.Namespace);
+			if (e.UserData["TypeAlias"] != null)
+				this.Output.Write(string.Format(" = {0}", e.UserData["TypeAlias"]));
+
 			this.Output.WriteLine(";");
 		}
 
@@ -2085,6 +2088,7 @@ namespace SIL.IdlImporterTool
 		{
 			foreach (CodeTypeDeclaration declaration1 in e.Types)
 			{
+				this.Output.WriteLine($"//GenerateType {e.Name}");
 				if (this.options.BlankLinesBetweenMembers)
 				{
 					this.Output.WriteLine();

@@ -7,7 +7,7 @@ header {
 
 #pragma warning disable 0618,0219, 0162
 
-//#define DEBUG_IDLGRAMMAR
+// #define DEBUG_IDLGRAMMAR
 
 using System.Diagnostics;
 using System.CodeDom;
@@ -79,35 +79,43 @@ definition
 		Hashtable attributes = new Hashtable();
 		CodeTypeMember type = null;
 		CodeTypeDeclaration decl = null;
+		CodeNamespaceImport alias = null;
 	}
-	:   ( type=type_dcl SEMI!
+	: ( type=type_dcl SEMI!
 			{
 			#if DEBUG_IDLGRAMMAR
-				System.Diagnostics.Debug.WriteLine(string.Format("\nType declaration found {0}\n\n", type != null ? type.Name : "<empty>"));
+				IDLImporter.Logger.Message(string.Format("\nType declaration found {0}: {1}\n\n", type != null ? type.Name : "<empty>", type != null ? type.UserData["TypeKind"] : "<>"));
 			#endif
 				if (type != null && type is CodeTypeDeclaration)
 				{
 					m_Namespace.Types.Add((CodeTypeDeclaration)type);
 					m_Namespace.UserData.Add(type.Name, type);
 				}
+				if (type != null && type.UserData["TypeAlias"] != null)
+				{
+					IDLImporter.Logger.Message(string.Format("\nType alias found {0}: {1}\n\n", type.Name, type.UserData["TypeAlias"]));
+					alias = new CodeNamespaceImport(type.Name);
+					alias.UserData.Add("TypeAlias", type.UserData["TypeAlias"]);
+					m_Namespace.Imports.Add(alias);
+				}
 			}
 		| c:const_dcl SEMI!
 			{
 			#if DEBUG_IDLGRAMMAR
-				System.Diagnostics.Debug.WriteLine(string.Format("\nConstant found {0}\n\n", c_AST != null ? c_AST.ToStringList() : "<null>"));
+				IDLImporter.Logger.Message(string.Format("\nConstant found {0}\n\n", c_AST != null ? c_AST.ToStringList() : "<null>"));
 			#endif
 			}
 		| e:except_dcl SEMI!
 			{
 			#if DEBUG_IDLGRAMMAR
-				System.Diagnostics.Debug.WriteLine(string.Format("\nException declaration found {0}\n\n", e_AST != null ? e_AST.ToStringList() : "<null>"));
+				IDLImporter.Logger.Message(string.Format("\nException declaration found {0}\n\n", e_AST != null ? e_AST.ToStringList() : "<null>"));
 			#endif
 			}
 		| (LBRACKET attribute_list[attributes] RBRACKET)?
 			(l:library
 				{
 					#if DEBUG_IDLGRAMMAR
-					System.Diagnostics.Debug.WriteLine(string.Format("\nLibrary found {0}\n\n", l_AST != null ? l_AST.ToStringList() : "<null>"));
+					IDLImporter.Logger.Message(string.Format("\nLibrary found {0}\n\n", l_AST != null ? l_AST.ToStringList() : "<null>"));
 					#endif
 				}
 			| decl=interf
@@ -115,7 +123,7 @@ definition
 					if (!(bool)decl.UserData["IsPartial"])
 					{
 						#if DEBUG_IDLGRAMMAR
-						System.Diagnostics.Debug.WriteLine(string.Format("\nInterface declaration found {0}\n\n", decl.Name));
+						IDLImporter.Logger.Message(string.Format("\nInterface declaration found {0}\n\n", decl.Name));
 						#endif
 						m_Conv.HandleInterface(decl, m_Namespace, attributes);
 						m_Namespace.Types.Add(decl);
@@ -137,7 +145,7 @@ definition
 					if (!(bool)decl.UserData["IsPartial"])
 					{
 						#if DEBUG_IDLGRAMMAR
-						System.Diagnostics.Debug.WriteLine(string.Format("\nCoclass declaration found {0}\n\n", decl.Name));
+						IDLImporter.Logger.Message(string.Format("\nCoclass declaration found {0}\n\n", decl.Name));
 						#endif
 						m_Conv.HandleCoClassInterface(decl, m_Namespace, attributes);
 						// Add coclass interface
@@ -153,7 +161,7 @@ definition
 		| m:module SEMI!
 			{
 			#if DEBUG_IDLGRAMMAR
-				System.Diagnostics.Debug.WriteLine(string.Format("\nModule found {0}\n\n", m_AST != null ? m_AST.ToStringList() : "<null>"));
+				IDLImporter.Logger.Message(string.Format("\nModule found {0}\n\n", m_AST != null ? m_AST.ToStringList() : "<null>"));
 			#endif
 			}
 		| import SEMI!
@@ -162,7 +170,7 @@ definition
 		| mi:midl_pragma_warning!
 			{
 			#if DEBUG_IDLGRAMMAR
-				System.Diagnostics.Debug.WriteLine(string.Format("\nMIDL pragma found {0}\n\n", mi_AST != null ? mi_AST.ToStringList() : "<null>"));
+				IDLImporter.Logger.Message(string.Format("\nMIDL pragma found {0}\n\n", mi_AST != null ? mi_AST.ToStringList() : "<null>"));
 			#endif
 			}
 		)
@@ -176,7 +184,7 @@ import
 	: "import"^ string_literal (COMMA string_literal)*
 			{
 			#if DEBUG_IDLGRAMMAR
-				System.Diagnostics.Debug.WriteLine(#import.ToStringList());
+				IDLImporter.Logger.Message(#import.ToStringList());
 			#endif
 			}
 	;
@@ -187,7 +195,7 @@ definition_list
 
 
 library
-	: "library"^ identifier LBRACE (definition)+ RBRACE SEMI!
+	: "library"^ identifier LBRACE (definition)+ RBRACE
 	;
 
 coclass returns [CodeTypeDeclaration type]
@@ -264,25 +272,18 @@ non_rparen
 	: (~RPAREN)+
 	;
 
-lib_definition
-	{
-		Hashtable attributes = new Hashtable();
-		CodeTypeMember ignored;
-	}
-	: (LBRACKET attribute_list[attributes] RBRACKET)? ignored=interf
-	| ignored=type_dcl SEMI!
-	| const_dcl SEMI!
-	| importlib SEMI!
-	| import SEMI!
-	//| tagged_declarator SEMI!
-	;
-
 importlib
+  {
+		string lib = string.Empty;
+  }
 	: "importlib"^ LPAREN str:string_literal RPAREN
 			{
+				lib = #str.getText();
 			#if DEBUG_IDLGRAMMAR
-				System.Diagnostics.Debug.WriteLine("importlib " + str_AST.getText());
+				IDLImporter.Logger.Message("importlib " + lib);
 			#endif
+				if (lib != "stdole2.tlb")
+					m_Namespace.Imports.Add(new CodeNamespaceImport(lib.Remove(lib.LastIndexOf(".tlb"))));
 			}
 	;
 
@@ -298,6 +299,7 @@ interf returns [CodeTypeDeclaration type]
 		{
 			/// we don't treat a forward declaration as real declaration
 			type.Name = name_AST.getText();
+			type.UserData.Add("TypeKind", "struct");
 			type.UserData.Add("IsPartial", fForwardDeclaration);
 			type.UserData.Add("inherits", inherits);
 		}
@@ -372,7 +374,7 @@ or_expr returns [string s]
 	}
 	: expr=xor_expr
 		{ bldr.Append(expr); }
-	  ( op:OR expr=xor_expr
+		( op:OR expr=xor_expr
 			{
 				bldr.Append(#op.getText());
 				bldr.Append(expr);
@@ -389,7 +391,7 @@ xor_expr returns [string s]
 	}
 	: expr=and_expr
 		{ bldr.Append(expr); }
-	  ( op:XOR expr=and_expr
+		( op:XOR expr=and_expr
 			{
 				bldr.Append(#op.getText());
 				bldr.Append(expr);
@@ -406,7 +408,7 @@ and_expr returns [string s]
 	}
 	: expr=shift_expr
 		{ bldr.Append(expr); }
-	  ( op:AND expr=shift_expr
+		( op:AND expr=shift_expr
 			{
 				bldr.Append(#op.getText());
 				bldr.Append(expr);
@@ -423,7 +425,7 @@ shift_expr returns [string s]
 	}
 	: expr=add_expr
 		{ bldr.Append(expr); }
-	  ( op:shift_op expr=add_expr
+		( op:shift_op expr=add_expr
 			{
 				bldr.Append(#op.getText());
 				bldr.Append(expr);
@@ -445,7 +447,7 @@ add_expr returns [string s]
 	}
 	: expr=mult_expr
 		{ bldr.Append(expr); }
-	  ( op:add_op expr=mult_expr
+		( op:add_op expr=mult_expr
 			{
 				bldr.Append(#op.getText());
 				bldr.Append(expr);
@@ -467,7 +469,7 @@ mult_expr returns [string s]
 	}
 	: expr=unary_expr
 		{ bldr.Append(expr); }
-	  ( op:mult_op expr=unary_expr
+		( op:mult_op expr=unary_expr
 			{
 				bldr.Append(#op.getText());
 				bldr.Append(expr);
@@ -580,21 +582,30 @@ type_declarator returns [CodeTypeMember type]
 	: type=type_spec name=declarator_list[attributes]
 		{
 		#if DEBUG_IDLGRAMMAR
-			System.Diagnostics.Debug.WriteLine(string.Format("typespec: {0}; {1}", type != null ? type.Name : "<empty>", name));
+			IDLImporter.Logger.Message(string.Format("type_declarator: {0}; {1}", type != null ? type.Name : "<empty>", name));
 		#endif
-			if (type.Name == string.Empty)
+			if (name != string.Empty)
+			{
+				if (type.UserData["TypeKind"] == "simple")
+					type.UserData["TypeAlias"] = ((CodeMemberField)type).Type.BaseType;
+
 				type.Name = name;
+			}
 		}
 	;
 
-type_spec  returns [CodeTypeMember type]
+type_spec returns [CodeTypeMember type]
 	{ type = null; }
 	: ("const")?
 		( s:simple_type_spec
 			{
 				type = new CodeMemberField();
 				((CodeMemberField)type).Type = m_Conv.ConvertParamType(#s.getText(), null, new Hashtable());
+			#if DEBUG_IDLGRAMMAR
+				IDLImporter.Logger.Message(string.Format("type_spec simple: {0}: {1}", #s.getText(), ((CodeMemberField)type).Type.BaseType));
+			#endif
 				type.Attributes = (type.Attributes & ~MemberAttributes.AccessMask) | MemberAttributes.Public;
+				type.UserData.Add("TypeKind", "simple");
 			}
 		| type=constr_type_spec)
 	;
@@ -680,7 +691,7 @@ declarator [IDictionary attributes] returns [string s]
 	: i:identifier (f=fixed_array_size { arraySize.Add(f); })*
 		{
 		#if DEBUG_IDLGRAMMAR
-			System.Diagnostics.Debug.WriteLine("declarator: " + #i.getText());
+			IDLImporter.Logger.Message("declarator: " + #i.getText());
 		#endif
 			s = #i.getText();
 
@@ -706,6 +717,7 @@ struct_type returns [CodeTypeDeclaration type]
 				IDLImporter.Logger.Message(string.Format("struct {0}", #name.getText()));
 				#endif
 				type.Name = #name.getText();
+				type.UserData.Add("TypeKind", "struct");
 			}
 		}
 	;
@@ -775,6 +787,7 @@ union_type
 				CodeTypeDeclaration type = new CodeTypeDeclaration();
 				type.IsStruct = true; // IsUnion does not exist
 				type.Name = #name.getText();
+				type.UserData.Add("TypeKind", "union");
 				m_Namespace.UserData[type.Name] = type;
 			}
 		}
@@ -864,6 +877,7 @@ enum_type returns [CodeTypeDeclaration type]
 				IDLImporter.Logger.Message(string.Format("enum {0}", #name.getText()));
 				#endif
 				type.Name = #name.getText();
+				type.UserData.Add("TypeKind", "enum");
 			}
 		}
 	;
@@ -1026,7 +1040,7 @@ param_dcl returns [CodeParameterDeclarationExpression param]
 		Hashtable attributes = new Hashtable();
 		string name = string.Empty;
 	}
-	: (LBRACKET param_attributes[attributes] RBRACKET)? ("const")? strType:param_type_spec ("const")? (name=declarator[attributes])?
+	: (LBRACKET param_attributes[attributes] RBRACKET)? ("const")? ("struct")? strType:param_type_spec ("const")? (name=declarator[attributes])?
 		{
 			string str = null;
 			if (#strType != null && name != string.Empty)
