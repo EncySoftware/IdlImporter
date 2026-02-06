@@ -7,6 +7,8 @@ using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.IO;
 using System.Reflection;
+using System.CommandLine;
+using System.CommandLine.Parsing;
 
 namespace SIL.IdlImporterTool
 {
@@ -17,24 +19,6 @@ namespace SIL.IdlImporterTool
 	/// ----------------------------------------------------------------------------------------
 	public class IDLImpConsole
 	{
-		private static void ShowHelp()
-		{
-			System.Console.WriteLine("\nIDLImporter. Creates .NET interfaces from an IDL file.");
-			System.Console.WriteLine("Copyright (c) 2002-2022, SIL International. All Rights Reserved.\n");
-			System.Console.WriteLine("Syntax: {0} [options] file.idl",
-				Path.GetFileName(Path.GetFileName(Assembly.GetEntryAssembly().Location)));
-			System.Console.WriteLine("possible options:");
-			System.Console.WriteLine("\t/o outfile\tname of created file (Default: file.cs)");
-			System.Console.WriteLine("\t/c configfile\tname of XML configuration file ({0}.xml)",
-				Path.GetFileNameWithoutExtension(Path.GetFileNameWithoutExtension(Assembly.GetEntryAssembly().Location)));
-			System.Console.WriteLine("\t/i idhfile\tname of IDH file for comments (Default: none)");
-			System.Console.WriteLine("\t/n namespace\tNamespace of the file to be produced");
-			System.Console.WriteLine("\t/u namespace\tadditional using namespaces");
-			System.Console.WriteLine("\t/r jsonfile\tFile name of .json file to use to resolve references");
-			System.Console.WriteLine("\t/x (0|1)\t1= create, 0= suppress XML comments (Default: 1)");
-			System.Console.WriteLine("\t/? \t\tshow this help information");
-		}
-
 		/// ------------------------------------------------------------------------------------
 		/// <summary>
 		/// The main entry point for the application.
@@ -45,78 +29,100 @@ namespace SIL.IdlImporterTool
 		[STAThread]
 		public static int Main(string[] args)
 		{
-			bool fOk;
-			try
+			string sFileName;
+			var inputFile = new Argument<FileInfo>("file.idl")
 			{
-				if (args.Length < 1 || args.Length == 1 && (args[0] == "/?" || args[0] == "-?") || !args[args.Length - 1].EndsWith(".idl"))
+				Description = ".IDL file to process"
+			};
+			Option<String> outputFile = new("--output", ["-o", "/o"])
+			{
+				Description = "/o outfile\tname of created file (Default: file.cs)"
+			};
+			Option<String> configFile = new("--config", ["-c", "/c"])
+			{
+				Description = $"/c configfile\tname of XML configuration file",
+				DefaultValueFactory = _ => Path.ChangeExtension(
+					Path.GetFileName(Assembly.GetEntryAssembly().Location),
+					"xml"
+				)
+			};
+			Option<String> genNamespace = new("--namespace", ["-n", "/n"])
+			{
+				Description = "/n namespace\tNamespace of the file to be produced"
+			};
+			Option<List<String>> usingNamespaces = new("--using", ["-u", "/u"])
+			{
+				Description = "/u namespace\tadditional using namespaces"
+			};
+			Option<List<String>> idhFiles = new("--idh", ["-i", "/i"])
+			{
+				Description = "/i idhfile\tname of IDH file for comments"
+			};
+			Option<List<String>> refFiles = new("--ref", ["-r", "/r"])
+			{
+				Description = "/r jsonfile\tFile name of .json file to use to resolve references"
+			};
+			Option<int> genComments = new("--comments", ["-x", "/x"])
+			{
+				Description = "/x (0|1)\t1= create, 0= suppress XML comments",
+				DefaultValueFactory = _ => 1
+			};
+
+			RootCommand rootCommand = new("""
+IDLImporter. Creates .NET interfaces from an IDL file.
+Copyright (c) 2002-2022, SIL International. All Rights Reserved.
+""")
+			{
+				inputFile,
+				outputFile,
+				configFile,
+				genNamespace,
+				usingNamespaces,
+				idhFiles,
+				refFiles,
+				genComments,
+			};
+
+			rootCommand.SetAction(parseResult =>
+			{
+				if (parseResult.Errors.Count == 0 && parseResult.GetValue(inputFile) is FileInfo parsedFile)
 				{
-					ShowHelp();
-					return 0;
+					sFileName = parsedFile.FullName;
+				}
+				else
+				{
+					foreach (ParseError parseError in parseResult.Errors)
+					{
+						Console.Error.WriteLine(parseError.Message);
+					}
+					Environment.Exit(1);
+					return;
 				}
 
 				// Get all necessary file names
-				List<string> usingNamespaces = new List<string>();
-				string sFileName = args[args.Length - 1];
-				if (!sFileName.EndsWith("idl"))
-				{
-					ShowHelp();
-					return 0;
-				}
-				string sXmlFile = Path.ChangeExtension(Path.GetFileName(Assembly.GetEntryAssembly().Location), "xml");
-				string sOutFile = Path.ChangeExtension(sFileName, "cs");
-				string sNamespace = Path.GetFileNameWithoutExtension(sFileName);
-				StringCollection idhFiles = new StringCollection();
-				StringCollection refFiles = new StringCollection();
-				bool fCreateComments = true;
-
-				for (int i = 0; i < (args.Length-1)/2; i++)
-				{
-					switch (args[i*2])
-					{
-						case "/o":
-						case "-o":
-							sOutFile = args[i*2+1];
-							break;
-						case "/c":
-						case "-c":
-							sXmlFile = args[i*2+1];
-							break;
-						case "/n":
-						case "-n":
-							sNamespace = args[i*2+1];
-							break;
-						case "/u":
-						case "-u":
-							usingNamespaces.AddRange(args[i*2+1].Split(';'));
-							break;
-						case "/?":
-						case "-?":
-							ShowHelp();
-							return 0;
-						case "/x":
-						case "-x":
-							fCreateComments = (args[i*2+1] == "0" ? false : true);
-							break;
-						case "/i":
-						case "-i":
-							idhFiles.AddRange(args[i * 2 + 1].Split(';'));
-							break;
-						case "/r":
-						case "-r":
-							refFiles.AddRange(args[i * 2 + 1].Split(';'));
-							break;
-						default:
-							Console.WriteLine("\nWrong parameter: {0}\n", args[i*2]);
-							ShowHelp();
-							return 0;
-					}
-				}
+				string sXmlFile = parseResult.GetValue(configFile);
+				string sOutFile = parseResult.GetValue(outputFile) ?? Path.ChangeExtension(sFileName, "cs");
+				string sNamespace = parseResult.GetValue(genNamespace) ?? Path.GetFileNameWithoutExtension(sFileName);
 
 				Console.WriteLine("Generating {0}...", Path.GetFileName(sOutFile));
 
 				IDLImporter imp = new IDLImporter();
-				fOk = imp.Import(usingNamespaces, sFileName, sXmlFile, sOutFile, sNamespace,
-					idhFiles, refFiles, fCreateComments);
+				var fOk = imp.Import(
+					parseResult.GetValue(usingNamespaces),
+					sFileName,
+					sXmlFile,
+					sOutFile,
+					sNamespace,
+					parseResult.GetValue(idhFiles),
+					parseResult.GetValue(refFiles),
+					parseResult.GetValue(genComments) == 1);
+
+				Environment.Exit(fOk ? 0 : 2);
+			});
+
+			try
+			{
+				return rootCommand.Parse(args).Invoke();
 			}
 			catch(Exception e)
 			{
@@ -126,8 +132,7 @@ namespace SIL.IdlImporterTool
 
 				return 1;
 			}
-
-			return fOk ? 0 : 2;
+			return 1;
 		}
 	}
 }

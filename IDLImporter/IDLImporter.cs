@@ -267,8 +267,8 @@ namespace SIL.IdlImporterTool
 		/// <returns><c>true</c> if import successful, otherwise <c>false</c>.</returns>
 		/// ------------------------------------------------------------------------------------
 		public bool Import(List<string> usingNamespaces, string sFileName, string sXmlFile,
-			string sOutFile, string sNamespace, StringCollection idhFiles,
-			StringCollection referencedFiles, bool fCreateComments)
+			string sOutFile, string sNamespace, System.Collections.Generic.List<string> idhFiles,
+			System.Collections.Generic.List<string> referencedFiles, bool fCreateComments)
 		{
 			var fOk = true;
 			var codeNamespace = new CodeNamespace();
