@@ -28,6 +28,10 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       <Link>IDLImporter.xml</Link>
     </None>
+    <None Include="..\IDLImporter\EncyConfig.xml">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <Link>EncyConfig.xml</Link>
+    </None>
     <Content Include="bin/$(Configuration)/**/*.*" PackagePath="tools" />
   </ItemGroup>
   <!-- Override so that only our specified files are included -->

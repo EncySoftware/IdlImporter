@@ -185,6 +185,9 @@ namespace SIL.IdlImporterTool
 		[XmlIgnore]
 		public CodeNamespace Namespace { get; set; }
 
+		[XmlIgnore]
+		public bool EncyMode { get; set; }
+
 		#region General conversion methods
 		/// ------------------------------------------------------------------------------------
 		/// <summary>
@@ -221,7 +224,7 @@ namespace SIL.IdlImporterTool
 
 			if (attributes["propget"] != null || attributes["propput"] != null || attributes["propputref"] != null)
 			{
-				if (member.Parameters.Count == 1)
+				if (member.Parameters.Count == 1 && !EncyMode)
 				{
 					// normal property - deal with it the .NET way (get/set)
 					var property = new CodeMemberProperty();

@@ -67,7 +67,10 @@ namespace SIL.IdlImporterTool
 				Description = "/x (0|1)\t1= create, 0= suppress XML comments",
 				DefaultValueFactory = _ => 1
 			};
-
+			Option<bool> encyMode = new("--ency")
+			{
+				Description = "Run in Ency mode"
+			};
 			RootCommand rootCommand = new("""
 IDLImporter. Creates .NET interfaces from an IDL file.
 Copyright (c) 2002-2022, SIL International. All Rights Reserved.
@@ -81,6 +84,7 @@ Copyright (c) 2002-2022, SIL International. All Rights Reserved.
 				idhFiles,
 				refFiles,
 				genComments,
+				encyMode,
 			};
 
 			rootCommand.SetAction(parseResult =>
@@ -115,7 +119,8 @@ Copyright (c) 2002-2022, SIL International. All Rights Reserved.
 					sNamespace,
 					parseResult.GetValue(idhFiles),
 					parseResult.GetValue(refFiles),
-					parseResult.GetValue(genComments) == 1);
+					parseResult.GetValue(genComments) == 1,
+					parseResult.GetValue(encyMode));
 
 				Environment.Exit(fOk ? 0 : 2);
 			});

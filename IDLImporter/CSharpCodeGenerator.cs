@@ -211,6 +211,11 @@ namespace SIL.IdlImporterTool
 					{
 						flag1 = true;
 					}
+					else if (declaration1.Name.Equals("ComImport") && options["EncyMode"] == "true")
+					{
+						Console.WriteLine("Replacing [ComImport()] attribute with [GeneratedComInterface]");
+						this.Output.WriteLine("[GeneratedComInterface]");
+					}
 					else
 					{
 						this.GenerateAttributeDeclarationsStart(attributes);
@@ -1475,17 +1480,6 @@ namespace SIL.IdlImporterTool
 			}
 		}
 
-		// Private help function for GenerateProperty
-		// Returns true if given CodeAttributeDeclarationCollection already contains a MarshalAs Attribute.
-		private bool HasMarshalAsAttrib(CodeAttributeDeclarationCollection coll)
-		{
-			foreach(CodeAttributeDeclaration codeAttribDec in coll)
-				if (codeAttribDec.Name.Contains("MarshalAs"))
-					return true;
-
-			return false;
-		}
-
 		private void GenerateProperty(CodeMemberProperty e, CodeTypeDeclaration c)
 		{
 			if ((this.IsCurrentClass || this.IsCurrentStruct) || this.IsCurrentInterface)
@@ -1535,26 +1529,7 @@ namespace SIL.IdlImporterTool
 						(e.Attributes & MemberAttributes.ScopeMask) == MemberAttributes.Abstract ||
 						IsExtern(e.UserData))
 					{
-						if (e.UserData.Contains("get_attrs"))
-						{
-							CodeAttributeDeclarationCollection coll =
-								e.UserData["get_attrs"] as CodeAttributeDeclarationCollection;
-
-							if (coll != null && coll.Count > 0)
-							{
-								if (!HasMarshalAsAttrib(coll) && e.UserData["MarshalAsType"] != null)
-								{
-									CodeAttributeDeclaration getPropCustomMarshalAsAttr =
-										new CodeAttributeDeclaration("return: MarshalAs",
-											 new CodeAttributeArgument(
-											 new CodeSnippetExpression(e.UserData["MarshalAsType"].ToString())));
-
-									coll.Add(getPropCustomMarshalAsAttr);
-								}
-
-								GenerateAttributes(coll);
-							}
-						}
+						this.GenerateMarshalAttributes(e, false);
 
 						this.Output.WriteLine("get;");
 					}
@@ -1572,26 +1547,7 @@ namespace SIL.IdlImporterTool
 				{
 					if (this.IsCurrentInterface || ((e.Attributes & MemberAttributes.ScopeMask) == MemberAttributes.Abstract) || IsExtern(e.UserData))
 					{
-						if (e.UserData.Contains("set_attrs"))
-						{
-							CodeAttributeDeclarationCollection coll =
-								e.UserData["set_attrs"] as CodeAttributeDeclarationCollection;
-							if (coll != null && coll.Count > 0)
-							{
-								if (!HasMarshalAsAttrib(coll) && e.UserData["MarshalAsType"] != null)
-								{
-									CodeAttributeDeclaration setPropCustomMarshalAsAttr =
-											new CodeAttributeDeclaration("param: MarshalAs",
-												 new CodeAttributeArgument(
-												 new CodeSnippetExpression(e.UserData["MarshalAsType"].ToString())));
-
-										coll.Add(setPropCustomMarshalAsAttr);
-								}
-
-								GenerateAttributes(coll);
-							}
-
-						}
+						this.GenerateMarshalAttributes(e, true);
 
 						this.Output.WriteLine("set;");
 					}
@@ -1607,6 +1563,33 @@ namespace SIL.IdlImporterTool
 				}
 				this.Indent--;
 				this.Output.WriteLine("}");
+			}
+		}
+
+		private void GenerateMarshalAttributes(CodeObject e, bool isSet)
+		{
+			var userDataKey = isSet ? "set_attrs" : "get_attrs";
+			if (e.UserData.Contains(userDataKey))
+			{
+				CodeAttributeDeclarationCollection coll =
+					e.UserData[userDataKey] as CodeAttributeDeclarationCollection;
+
+				if (coll != null && coll.Count > 0)
+				{
+					foreach(CodeAttributeDeclaration codeAttribDec in coll)
+					{
+						var attrName = codeAttribDec.Name;
+						if (!attrName.StartsWith("Marshal") || e.UserData[attrName + "Type"] == null)
+						{
+							continue;
+						}
+						coll.Add(new CodeAttributeDeclaration(
+							(isSet ? "param" : "return") + ": " + attrName,
+							 new CodeAttributeArgument(new CodeSnippetExpression(e.UserData[attrName + "Type"].ToString()))
+						));
+					}
+					GenerateAttributes(coll);
+				}
 			}
 		}
 
@@ -2028,7 +2011,8 @@ namespace SIL.IdlImporterTool
 				}
 				else if (member is CodeMemberProperty)
 				{
-					this.GenerateProperty((CodeMemberProperty) member, declaredType);
+					var prop = (CodeMemberProperty) member;
+					this.GenerateProperty(prop, declaredType);
 				}
 				else if (member is CodeMemberMethod)
 				{
@@ -2088,7 +2072,6 @@ namespace SIL.IdlImporterTool
 		{
 			foreach (CodeTypeDeclaration declaration1 in e.Types)
 			{
-				this.Output.WriteLine($"//GenerateType {e.Name}");
 				if (this.options.BlankLinesBetweenMembers)
 				{
 					this.Output.WriteLine();
@@ -2793,7 +2776,7 @@ namespace SIL.IdlImporterTool
 					this.Output.Write("class ");
 					return;
 				}
-				if (e.IsPartial)
+				if (e.IsPartial || options["EncyMode"] == "true")
 				{
 					this.Output.Write("partial ");
 				}
