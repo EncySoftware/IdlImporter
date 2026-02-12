@@ -148,8 +148,8 @@
 		<Replace>System.Int32</Replace>
 	</ParamTypeConversion>
 	<ParamTypeConversion>
-		<NewAttribute>MarshalAs</NewAttribute>
-		<NewAttrValue>UnmanagedType.BStr</NewAttrValue>
+		<NewAttribute>MarshalUsing</NewAttribute>
+		<NewAttrValue>typeof(TDelphiWideStringMarshaller)</NewAttrValue>
 		<Match>BSTR</Match>
 		<Replace>System.String</Replace>
 	</ParamTypeConversion>
@@ -225,9 +225,9 @@
 	</ParamTypeConversion>
 	<ParamTypeConversion>
 		<Match>IStream</Match>
-		<Replace>IStream</Replace>
+		<Replace>IDelphiHostedStream</Replace>
 		<NewAttribute>MarshalUsing</NewAttribute>
-		<NewAttrValue>typeof(TIStreamMarshaller)</NewAttrValue>
+		<NewAttrValue>typeof(TDelphiHostedStreamMarshaller)</NewAttrValue>
 	</ParamTypeConversion>
 	<ParamTypeConversion>
 		<Match>TResultStatus</Match>
