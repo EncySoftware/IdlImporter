@@ -12,20 +12,20 @@
 		<Match>(char|wchar_t|OLECHAR)\s*(\*(\s\*)?|[^\[]*\s*\[\s*\])</Match>
 		<Replace>System.String</Replace>
 	</ParamTypeConversion>
-  <ParamTypeConversion>
+	<ParamTypeConversion>
 	<Attribute>out,size_is,~retval</Attribute>
 	<NewAttribute>-out,-size_is</NewAttribute>
 	<Match>OLECHAR\s+\*\s+prgchBuf</Match>
 	<Replace>IntPtr</Replace>
-  </ParamTypeConversion>
-  <ParamTypeConversion>
+	</ParamTypeConversion>
+	<ParamTypeConversion>
 		<Attribute>size_is</Attribute>
 		<NewAttribute>MarshalAs,-size_is</NewAttribute>
 		<NewAttrValue>UnmanagedType.LPWStr</NewAttrValue>
 		<Match>OLECHAR\s*(\*(\s\*)?|[^\[]*\s*\[\s*\])</Match>
 		<Replace>System.String</Replace>
 	</ParamTypeConversion>
-  <ParamTypeConversion>
+	<ParamTypeConversion>
 		<Attribute>size_is</Attribute>
 		<NewAttribute>MarshalAs</NewAttribute>
 		<NewAttrValue>UnmanagedType.LPArray</NewAttrValue>
@@ -70,6 +70,8 @@
 		<Replace>System.Int32</Replace>
 	</ParamTypeConversion>
 	<ParamTypeConversion>
+		<Unmanaged>IntPtr</Unmanaged>
+		<MarshalUsing>TDelphiWideStringMarshaller</MarshalUsing>
 		<Match>(LPCOLESTR|LPOLESTR)</Match>
 		<Replace>System.String</Replace>
 	</ParamTypeConversion>
@@ -148,16 +150,20 @@
 		<Replace>System.Int32</Replace>
 	</ParamTypeConversion>
 	<ParamTypeConversion>
-		<NewAttribute>MarshalUsing</NewAttribute>
-		<NewAttrValue>typeof(TDelphiWideStringMarshaller)</NewAttrValue>
+		<Unmanaged>IntPtr</Unmanaged>
+		<MarshalUsing>TDelphiWideStringMarshaller</MarshalUsing>
 		<Match>BSTR</Match>
 		<Replace>System.String</Replace>
 	</ParamTypeConversion>
 	<ParamTypeConversion>
+		<Unmanaged>IntPtr</Unmanaged>
+		<MarshalUsing>TDelphiWideStringMarshaller</MarshalUsing>
 		<Match>LPSTR</Match>
 		<Replace>System.String</Replace>
 	</ParamTypeConversion>
 	<ParamTypeConversion>
+		<Unmanaged>IntPtr</Unmanaged>
+		<MarshalUsing>TDelphiWideStringMarshaller</MarshalUsing>
 		<Match>LPWSTR</Match>
 		<Replace>System.String</Replace>
 	</ParamTypeConversion>
@@ -226,14 +232,7 @@
 	<ParamTypeConversion>
 		<Match>IStream</Match>
 		<Replace>IDelphiHostedStream</Replace>
-		<NewAttribute>MarshalUsing</NewAttribute>
-		<NewAttrValue>typeof(TDelphiHostedStreamMarshaller)</NewAttrValue>
-	</ParamTypeConversion>
-	<ParamTypeConversion>
-		<Match>TResultStatus</Match>
-		<Replace>CAMAPI.ResultStatus.TResultStatus</Replace>
-		<NewAttribute>MarshalUsing</NewAttribute>
-		<NewAttrValue>typeof(TResultStatusMarshaller)</NewAttrValue>
+		<MarshalUsing>TDelphiHostedStreamMarshaller</MarshalUsing>
 	</ParamTypeConversion>
 	<!-- Interfaces : any type beginning with 'I' (TODO Improve this) -->
 	<ParamTypeConversion>

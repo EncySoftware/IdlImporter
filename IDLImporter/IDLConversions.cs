@@ -74,6 +74,8 @@ namespace SIL.IdlImporterTool
 
 		public string Replace { get; set; }
 
+		public string Unmanaged { get; set; }
+		public string MarshalUsing { get; set; }
 		public string NewAttribute { get; set; }
 
 		[XmlIgnore]
@@ -224,10 +226,10 @@ namespace SIL.IdlImporterTool
 
 			if (attributes["propget"] != null || attributes["propput"] != null || attributes["propputref"] != null)
 			{
-				if (member.Parameters.Count == 1 && !EncyMode)
+				var property = new CodeMemberProperty();
+				if (member.Parameters.Count == 1)
 				{
 					// normal property - deal with it the .NET way (get/set)
-					var property = new CodeMemberProperty();
 					property.Attributes = memberRet.Attributes;
 					property.Comments.AddRange(memberRet.Comments);
 					property.CustomAttributes.AddRange(memberRet.CustomAttributes);
@@ -274,17 +276,25 @@ namespace SIL.IdlImporterTool
 							property.UserData["MarshalAsType"] = "UnmanagedType.Interface";
 						}
 					}
-					memberRet = property;
+
+					if (EncyMode)
+					{
+						memberRet.UserData.Add("PropertyExtension", property);
+					}
+					else
+					{
+						memberRet = property;
+					}
 				}
-				else
+				if (member.Parameters.Count != 1 || EncyMode)
 				{
 					// parameter with multiple parameters - can't use get/set the .NET way
-					if (attributes["propget"] != null)
+					if (attributes["propget"] != null || property.HasGet)
 					{
 						memberRet.Name = "get_" + memberRet.Name;
 						attributes.Remove("propget");
 					}
-					if (attributes["propput"] != null)
+					if (attributes["propput"] != null || property.HasSet)
 					{
 						var iPropSet = IndexOfMember(types, "set_" + member.Name);
 						if (iPropSet > -1)
@@ -397,6 +407,103 @@ namespace SIL.IdlImporterTool
 			return -1;
 		}
 
+		public void HandleStruct_dcl(CodeTypeDeclaration type)
+		{
+			if (!EncyMode)
+			{
+				return;
+			}
+			type.CustomAttributes.Add(new CodeAttributeDeclaration("NativeMarshalling",
+				new CodeAttributeArgument(new CodeSnippetExpression($"typeof({type.Name}Marshaller)"))));
+
+			var typeMarshaller = new CodeTypeDeclaration(type.Name + "Marshaller")
+			{
+				IsClass = true,
+				TypeAttributes = TypeAttributes.NestedAssembly,
+			};
+			typeMarshaller.CustomAttributes.Add(new CodeAttributeDeclaration("CustomMarshaller",
+				new CodeAttributeArgument(new CodeSnippetExpression($"typeof({type.Name}), MarshalMode.Default, typeof({typeMarshaller.Name})"))));
+			typeMarshaller.UserData["GenerateMarshallerForType"] = type;
+			typeMarshaller.UserData["static"] = true;
+			typeMarshaller.UserData["unsafe"] = true;
+
+			CodeTypeDeclaration unmanagedStruct = new CodeTypeDeclaration(type.Name + "Unmanaged")
+			{
+				IsStruct = true,
+				TypeAttributes = TypeAttributes.NestedAssembly,
+			};
+			unmanagedStruct.CustomAttributes.Add(new CodeAttributeDeclaration("StructLayout",
+				new CodeAttributeArgument(new CodeSnippetExpression("LayoutKind.Sequential, Pack=1"))));
+
+			CodeMemberMethod u2m = new CodeMemberMethod();
+			u2m.Name = "ConvertToManaged";
+			u2m.Attributes = MemberAttributes.Public | MemberAttributes.Static | MemberAttributes.Final;
+			u2m.ReturnType = new CodeTypeReference(type.Name);
+			u2m.Statements.Add(new CodeVariableDeclarationStatement(u2m.ReturnType, "m",
+				new CodeObjectCreateExpression(u2m.ReturnType)));
+
+			CodeMemberMethod m2u = new CodeMemberMethod();
+			m2u.Name = "ConvertToUnmanaged";
+			m2u.Attributes = MemberAttributes.Public | MemberAttributes.Static | MemberAttributes.Final;
+			m2u.ReturnType = new CodeTypeReference(unmanagedStruct.Name);
+			m2u.Statements.Add(new CodeVariableDeclarationStatement(m2u.ReturnType, "u",
+				new CodeObjectCreateExpression(m2u.ReturnType)));
+
+			CodeMemberMethod free = new CodeMemberMethod();
+			free.Name = "Free";
+			free.Attributes = MemberAttributes.Public | MemberAttributes.Static | MemberAttributes.Final;
+
+			foreach (CodeTypeMember member in type.Members)
+			{
+				if (member is CodeMemberField field)
+				{
+					var mVar = new CodeVariableReferenceExpression($"m.{field.Name}");
+					var uVar = new CodeVariableReferenceExpression($"u.{field.Name}");
+					var managedAssign = new CodeAssignStatement(mVar, uVar);
+					var unmanagedAssign = new CodeAssignStatement(uVar, mVar);
+
+					var unmanagedType = field.Type.BaseType;
+					if (field.Type.UserData["EnumUnmanagedType"] is string enumUnmanagedType)
+					{
+						unmanagedType = enumUnmanagedType;
+					}
+					if (field.Type.UserData["ConversionEntry"] is ConversionEntry matchedEntry)
+					{
+						if (!String.IsNullOrEmpty(matchedEntry.Unmanaged))
+							unmanagedType = matchedEntry.Unmanaged;
+						if (!String.IsNullOrEmpty(matchedEntry.MarshalUsing))
+						{
+							var marshaler = new CodeVariableReferenceExpression(matchedEntry.MarshalUsing);
+							managedAssign = new CodeAssignStatement(mVar, new CodeMethodInvokeExpression(marshaler, "ConvertToManaged", uVar));
+							unmanagedAssign = new CodeAssignStatement(uVar, new CodeMethodInvokeExpression(marshaler, "ConvertToUnmanaged", mVar));
+
+							free.Statements.Add(new CodeMethodInvokeExpression(marshaler, "Free", uVar));
+						}
+					}
+					var unmanagedField = new CodeMemberField(unmanagedType, field.Name);
+					unmanagedField.Attributes = MemberAttributes.Public | MemberAttributes.Final;
+					unmanagedStruct.Members.Add(unmanagedField);
+					u2m.Statements.Add(managedAssign);
+					m2u.Statements.Add(unmanagedAssign);
+				}
+			}
+
+			typeMarshaller.Members.Add(unmanagedStruct);
+
+			u2m.Parameters.Add(new CodeParameterDeclarationExpression(unmanagedStruct.Name, "u"));
+			u2m.Statements.Add(new CodeMethodReturnStatement( new CodeArgumentReferenceExpression("m")));
+			typeMarshaller.Members.Add(u2m);
+
+			m2u.Parameters.Add(new CodeParameterDeclarationExpression(type.Name, "m"));
+			m2u.Statements.Add(new CodeMethodReturnStatement( new CodeArgumentReferenceExpression("u")));
+			typeMarshaller.Members.Add(m2u);
+
+			free.Parameters.Add(new CodeParameterDeclarationExpression(unmanagedStruct.Name, "u"));
+			typeMarshaller.Members.Add(free);
+
+			Namespace.Types.Add(typeMarshaller);
+		}
+
 		/// ------------------------------------------------------------------------------------
 		/// <summary>
 		/// Handles all base classes. For IUnknown and IDispatch we set an attribute
@@ -495,13 +602,36 @@ namespace SIL.IdlImporterTool
 			AddAttributesToType(type, attributes);
 			attributes.Clear();
 
-#if DEBUG_IDLGRAMMAR
+			var properyExtensions = new Dictionary<string, CodeMemberProperty>();
 			foreach (CodeTypeMember member in type.Members)
 			{
+				if (member.UserData["PropertyExtension"] is CodeMemberProperty prop)
+				{
+					if (properyExtensions.ContainsKey(prop.Name)) {
+						properyExtensions[prop.Name].HasGet |= prop.HasGet;
+						properyExtensions[prop.Name].HasSet |= prop.HasSet;
+					} else {
+						properyExtensions[prop.Name] = prop;
+					}
+				}
+#if DEBUG_IDLGRAMMAR
 				System.Diagnostics.Debug.WriteLine(string.Format("member={0}.{1}", type.Name,
 					member.Name));
-			}
 #endif
+			}
+
+			if (properyExtensions.Count != 0) {
+				// We'll have to manually generate the property extensions (added in C#14)
+				// since code generator used in IdlImporter is not from C#14
+				var typeExtension = new CodeTypeDeclaration(type.Name + "Extensions")
+				{
+					IsClass = true
+				};
+				typeExtension.UserData["GeneratePropertyExtensions"] = properyExtensions;
+				typeExtension.UserData["GeneratePropertyExtensionsForType"] = type;
+				typeExtension.UserData["static"] = true;
+				Namespace.Types.Add(typeExtension);
+			}
 		}
 
 		/// ------------------------------------------------------------------------------------
@@ -555,7 +685,7 @@ namespace SIL.IdlImporterTool
 			if (rv == false)
 			{
 				rv = ((Namespace.UserData[typeName] != null)
-					  && ((CodeTypeDeclaration)Namespace.UserData[typeName]).IsInterface);
+						&& ((CodeTypeDeclaration)Namespace.UserData[typeName]).IsInterface);
 			}
 
 			return rv;
@@ -905,6 +1035,7 @@ namespace SIL.IdlImporterTool
 		{
 			var type = new CodeTypeReference(string.Empty);
 			var sParameter = sOriginalParameter;
+			ConversionEntry matchedEntry = null;
 
 			if (m_ParamTypes != null)
 			{
@@ -971,6 +1102,7 @@ namespace SIL.IdlImporterTool
 					if (!fMatch)
 						continue;
 
+					matchedEntry = entry;
 					{
 						sParameter = entry.Regex.Replace(sParameter, entry.Replace);
 
@@ -1018,6 +1150,13 @@ namespace SIL.IdlImporterTool
 								}
 							}
 						}
+						if (!String.IsNullOrEmpty(entry.MarshalUsing) && param != null)
+						{
+							// param.CustomAttributes.Remove("MarshalUsing");
+							param.CustomAttributes.Add(new CodeAttributeDeclaration(
+								"MarshalUsing",
+								new CodeAttributeArgument(new CodeSnippetExpression($"typeof({entry.MarshalUsing})"))));
+						}
 
 						if (entry.fEnd)
 							break;
@@ -1028,6 +1167,7 @@ namespace SIL.IdlImporterTool
 			// Remove the parameter name from the end
 			var regex = new Regex("\\s+[^\\s]+[^\\w]*$");
 			type.BaseType = regex.Replace(sParameter.TrimStart(null), "");
+			type.UserData["ConversionEntry"] = matchedEntry;
 
 			var regexArray = new Regex("\\[\\s*\\]\\s*$");
 			if (regexArray.IsMatch(type.BaseType))

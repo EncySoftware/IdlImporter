@@ -718,6 +718,7 @@ struct_type returns [CodeTypeDeclaration type]
 				#endif
 				type.Name = #name.getText();
 				type.UserData.Add("TypeKind", "struct");
+				m_Conv.HandleStruct_dcl(type);
 			}
 		}
 	;

@@ -1978,6 +1978,25 @@ namespace SIL.IdlImporterTool
 		{
 			if (!this.IsCurrentDelegate)
 			{
+				if (e.UserData["GeneratePropertyExtensionsForType"] is CodeTypeDeclaration extendType)
+				{
+					this.Output.WriteLine($"extension({extendType.Name} arg)");
+					this.Output.WriteLine("{");
+					this.Indent++;
+					if (e.UserData["GeneratePropertyExtensions"] is Dictionary<string, CodeMemberProperty> props)
+					{
+						foreach (var prop in props.Values)
+						{
+							prop.Attributes = MemberAttributes.Public | MemberAttributes.Final;
+							prop.GetStatements.Add(new CodeSnippetExpression($"return arg.get_{prop.Name}()"));
+							prop.SetStatements.Add(new CodeSnippetExpression($"arg.set_{prop.Name}(value)"));
+							this.GenerateProperty(prop, e);
+						}
+					}
+					this.Indent--;
+					this.Output.WriteLine("}");
+				}
+
 				this.Indent--;
 				this.Output.WriteLine("}");
 			}
@@ -2731,11 +2750,16 @@ namespace SIL.IdlImporterTool
 					this.Output.Write("protected internal ");
 					break;
 			}
-			// Add missing "static" feature
+			// Add missing "static" and "unsafe" features
 			if (e.UserData.Contains("static"))
 			{
 				e.UserData.Remove("static");
 				Output.Write("static ");
+			}
+			if (e.UserData.Contains("unsafe"))
+			{
+				e.UserData.Remove("unsafe");
+				Output.Write("unsafe ");
 			}
 			if (e.IsStruct)
 			{
