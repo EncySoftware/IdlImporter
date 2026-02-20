@@ -467,13 +467,16 @@ namespace SIL.IdlImporterTool
 					{
 						unmanagedType = enumUnmanagedType;
 					}
-					if (field.Type.UserData["ConversionEntry"] is ConversionEntry matchedEntry)
+					if (field.Type.UserData["ConversionEntryUnmanaged"] is string matchedUnmanagedType)
 					{
-						if (!String.IsNullOrEmpty(matchedEntry.Unmanaged))
-							unmanagedType = matchedEntry.Unmanaged;
-						if (!String.IsNullOrEmpty(matchedEntry.MarshalUsing))
+						if (!String.IsNullOrEmpty(matchedUnmanagedType))
+							unmanagedType = matchedUnmanagedType;
+					}
+					if (field.Type.UserData["ConversionEntryMarshalUsing"] is string matchedMarshalUsing)
+					{
+						if (!String.IsNullOrEmpty(matchedMarshalUsing))
 						{
-							var marshaler = new CodeVariableReferenceExpression(matchedEntry.MarshalUsing);
+							var marshaler = new CodeVariableReferenceExpression(matchedMarshalUsing);
 							managedAssign = new CodeAssignStatement(mVar, new CodeMethodInvokeExpression(marshaler, "ConvertToManaged", uVar));
 							unmanagedAssign = new CodeAssignStatement(uVar, new CodeMethodInvokeExpression(marshaler, "ConvertToUnmanaged", mVar));
 
@@ -1167,7 +1170,10 @@ namespace SIL.IdlImporterTool
 			// Remove the parameter name from the end
 			var regex = new Regex("\\s+[^\\s]+[^\\w]*$");
 			type.BaseType = regex.Replace(sParameter.TrimStart(null), "");
-			type.UserData["ConversionEntry"] = matchedEntry;
+			if (matchedEntry != null && !string.IsNullOrEmpty(matchedEntry.Unmanaged))
+				type.UserData["ConversionEntryUnmanaged"] = matchedEntry.Unmanaged;
+			if (matchedEntry != null && !string.IsNullOrEmpty(matchedEntry.MarshalUsing))
+				type.UserData["ConversionEntryMarshalUsing"] = matchedEntry.MarshalUsing;
 
 			var regexArray = new Regex("\\[\\s*\\]\\s*$");
 			if (regexArray.IsMatch(type.BaseType))

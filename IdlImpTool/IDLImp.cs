@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.IO;
+using System.CodeDom;
 using System.Reflection;
 using System.CommandLine;
 using System.CommandLine.Parsing;
@@ -32,7 +33,7 @@ namespace SIL.IdlImporterTool
 			string sFileName;
 			var inputFile = new Argument<FileInfo>("file.idl")
 			{
-				Description = ".IDL file to process"
+				Description = ".IDL or .JSON file to process"
 			};
 			Option<String> outputFile = new("--output", ["-o", "/o"])
 			{
@@ -71,6 +72,18 @@ namespace SIL.IdlImporterTool
 			{
 				Description = "Run in Ency mode"
 			};
+			Option<bool> genCsCode = new("--gen-cs-code")
+			{
+				Description = "Do not generate cs code"
+			};
+			Option<bool> genPasCdeclWrappers = new("--gen-cdecl-wrappers")
+			{
+				Description = "Generate Delphi cdecl wrappers for interfaces"
+			};
+			Option<bool> dumpCodeNamespace = new("--dump")
+			{
+				Description = "Dump code namespace as JSON"
+			};
 			RootCommand rootCommand = new("""
 IDLImporter. Creates .NET interfaces from an IDL file.
 Copyright (c) 2002-2022, SIL International. All Rights Reserved.
@@ -83,14 +96,19 @@ Copyright (c) 2002-2022, SIL International. All Rights Reserved.
 				usingNamespaces,
 				idhFiles,
 				refFiles,
+				genCsCode,
 				genComments,
+				dumpCodeNamespace,
 				encyMode,
+				genPasCdeclWrappers,
 			};
 
 			rootCommand.SetAction(parseResult =>
 			{
+				bool loadFromJson = false;
 				if (parseResult.Errors.Count == 0 && parseResult.GetValue(inputFile) is FileInfo parsedFile)
 				{
+					loadFromJson = string.Equals(Path.GetExtension(parsedFile.FullName), "json", StringComparison.OrdinalIgnoreCase);
 					sFileName = parsedFile.FullName;
 				}
 				else
@@ -110,8 +128,10 @@ Copyright (c) 2002-2022, SIL International. All Rights Reserved.
 
 				Console.WriteLine("Generating {0}...", Path.GetFileName(sOutFile));
 
+				var isEncyMode = parseResult.GetValue(encyMode);
 				IDLImporter imp = new IDLImporter();
-				var fOk = imp.Import(
+
+				var importParams = new IDLImporter.ImportParams(
 					parseResult.GetValue(usingNamespaces),
 					sFileName,
 					sXmlFile,
@@ -119,10 +139,39 @@ Copyright (c) 2002-2022, SIL International. All Rights Reserved.
 					sNamespace,
 					parseResult.GetValue(idhFiles),
 					parseResult.GetValue(refFiles),
+					parseResult.GetValue(genCsCode),
 					parseResult.GetValue(genComments) == 1,
-					parseResult.GetValue(encyMode));
+					parseResult.GetValue(dumpCodeNamespace),
+					isEncyMode);
 
-				Environment.Exit(fOk ? 0 : 2);
+				CodeNamespace codeNs = null;
+				if (loadFromJson)
+				{
+					codeNs = imp.DeserializeData(Path.ChangeExtension(sFileName, "json"));
+				}
+				else
+				{
+					codeNs = imp.Import(importParams);
+				}
+
+				if (codeNs == null)
+				{
+					Environment.Exit(2);
+				}
+				if (parseResult.GetValue(genPasCdeclWrappers))
+				{
+					var cdeclWrappersUnit = $"IDL.{sNamespace}CdeclWrapper";
+					var cdeclWrapperUses = new List<string>() {
+							"System.Classes",
+							"ValueWrapper",
+							"IDL." + sNamespace,
+					};
+					var resultDir = Path.GetDirectoryName(sOutFile);
+					var cdeclWrapperGen = new CdeclWrapperGenerator(IDLImporter.Logger, resultDir);
+					cdeclWrapperGen.GenerateFromCodeNamespace(codeNs, cdeclWrappersUnit, cdeclWrapperUses);
+				}
+
+				Environment.Exit(0);
 			});
 
 			try

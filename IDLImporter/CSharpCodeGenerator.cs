@@ -1988,8 +1988,10 @@ namespace SIL.IdlImporterTool
 						foreach (var prop in props.Values)
 						{
 							prop.Attributes = MemberAttributes.Public | MemberAttributes.Final;
-							prop.GetStatements.Add(new CodeSnippetExpression($"return arg.get_{prop.Name}()"));
-							prop.SetStatements.Add(new CodeSnippetExpression($"arg.set_{prop.Name}(value)"));
+							if (prop.HasGet)
+								prop.GetStatements.Add(new CodeSnippetExpression($"return arg.get_{prop.Name}()"));
+							if (prop.HasSet)
+								prop.SetStatements.Add(new CodeSnippetExpression($"arg.set_{prop.Name}(value)"));
 							this.GenerateProperty(prop, e);
 						}
 					}

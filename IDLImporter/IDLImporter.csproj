@@ -1,8 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <OutputType>Library</OutputType>
     <AssemblyTitle>IDLImporter</AssemblyTitle>
+    <TargetFrameworks>net6.0</TargetFrameworks>
     <PackageId>SIL.IdlImporter</PackageId>
+    <Version>4.1.0-ency</Version>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <Description>Imports the COM interfaces from an IDL file for use with .NET. Can handle
       c-style arrays and OLECHAR pointers.</Description>
   </PropertyGroup>

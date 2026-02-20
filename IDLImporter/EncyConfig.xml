@@ -231,7 +231,7 @@
 	</ParamTypeConversion>
 	<ParamTypeConversion>
 		<Match>IStream</Match>
-		<Replace>IDelphiHostedStream</Replace>
+		<Replace>IStream</Replace>
 		<MarshalUsing>TDelphiHostedStreamMarshaller</MarshalUsing>
 	</ParamTypeConversion>
 	<!-- Interfaces : any type beginning with 'I' (TODO Improve this) -->

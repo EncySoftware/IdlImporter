@@ -265,20 +265,33 @@ $@"-----------------------------------------------------------------------------
 		/// <param name="fCreateComments"><c>true</c> to create XML comments</param>
 		/// <returns><c>true</c> if import successful, otherwise <c>false</c>.</returns>
 		/// ------------------------------------------------------------------------------------
-		public bool Import(List<string> usingNamespaces, string sFileName, string sXmlFile,
-			string sOutFile, string sNamespace, System.Collections.Generic.List<string> idhFiles,
-			System.Collections.Generic.List<string> referencedFiles, bool fCreateComments, bool encyMode)
+
+		public record ImportParams(
+			List<string> UsingNamespaces,
+			string FileName,
+			string XmlFile,
+			string OutFile,
+			string Namespace,
+			System.Collections.Generic.List<string> IdhFiles,
+			System.Collections.Generic.List<string> ReferencedFiles,
+			bool GenerateCSCode = true,
+			bool CreateComments = true,
+			bool DumpCodeNamespace = true,
+			bool EncyMode = false)
 		{
-			var fOk = true;
+		}
+
+		public CodeNamespace Import(ImportParams p)
+		{
 			var codeNamespace = new CodeNamespace();
 
 			// Add additional using statements
-			foreach (var ns in usingNamespaces)
+			foreach (var ns in p.UsingNamespaces)
 				codeNamespace.Imports.Add(new CodeNamespaceImport(ns));
 
 			// Add types from referenced files so that we can resolve types that are not
 			// defined in this IDL file.
-			foreach (var refFile in referencedFiles)
+			foreach (var refFile in p.ReferencedFiles)
 			{
 				var referencedNamespace = DeserializeData(refFile);
 				if (referencedNamespace == null)
@@ -289,6 +302,7 @@ $@"-----------------------------------------------------------------------------
 			}
 
 			// Load the IDL conversion rules
+			var sXmlFile = p.XmlFile;
 			if (sXmlFile == null)
 			{
 				var assembly = Assembly.GetExecutingAssembly();
@@ -296,29 +310,30 @@ $@"-----------------------------------------------------------------------------
 			}
 			var conversions = IDLConversions.Deserialize(sXmlFile);
 			conversions.Namespace = codeNamespace;
-			conversions.EncyMode = encyMode;
+			conversions.EncyMode = p.EncyMode;
 
 #if SINGLE_THREADED
-			ParseIdhFiles(idhFiles);
+			ParseIdhFiles(p.IdhFiles);
 #else
 			_waitHandle = new EventWaitHandle(false, EventResetMode.AutoReset);
-			ThreadPool.QueueUserWorkItem(ParseIdhFiles, idhFiles);
+			ThreadPool.QueueUserWorkItem(ParseIdhFiles, p.IdhFiles);
 #endif
 
+			var sFileName = p.FileName;
 			using (var stream = new FileStream(sFileName, FileMode.Open, FileAccess.Read))
 			{
 				var lexer = new IDLLexer(stream);
 				var parser = new IDLParser(lexer);
 				parser.setFilename(sFileName);
 
-				codeNamespace.Name = sNamespace;
-				codeNamespace.Comments.AddRange(AddFileBanner(sFileName, sOutFile, encyMode));
+				codeNamespace.Name = p.Namespace;
+				codeNamespace.Comments.AddRange(AddFileBanner(sFileName, p.OutFile, p.EncyMode));
 				codeNamespace.Imports.Add(new CodeNamespaceImport("System"));
 				codeNamespace.Imports.Add(new CodeNamespaceImport("System.Runtime.InteropServices"));
 				codeNamespace.Imports.Add(new CodeNamespaceImport("System.Runtime.InteropServices.ComTypes"));
 				codeNamespace.Imports.Add(new CodeNamespaceImport("System.Runtime.CompilerServices"));
 
-				if (encyMode)
+				if (p.EncyMode)
 				{
 					codeNamespace.Imports.Add(new CodeNamespaceImport("System.Runtime.InteropServices.Marshalling"));
 					codeNamespace.Imports.Add(new CodeNamespaceImport("GeneratedComInterfaceHelpers"));
@@ -328,26 +343,35 @@ $@"-----------------------------------------------------------------------------
 				parser.specification(codeNamespace, conversions);
 
 				// Merge properties
-				fOk = MergeProperties(codeNamespace);
+				if (!MergeProperties(codeNamespace))
+				{
+					return null;
+				}
 
 				IDLConversions.AdjustReferencesInEnums();
 
 				// Add XML comments
-				if (fCreateComments)
+				if (p.CreateComments)
 				{
 					_waitHandle?.WaitOne();
 
 					AddComments(codeNamespace.Types);
 				}
 
-				// Serialize what we have so that we can re-use later if necessary
-				SerializeData(sFileName, codeNamespace);
+				if (p.DumpCodeNamespace)
+				{
+					// Serialize what we have so that we can re-use later if necessary
+					SerializeData(sFileName, codeNamespace);
+				}
 
-				// Finally, create the source code
-				GenerateCode(sOutFile, codeNamespace, encyMode);
+				if (p.GenerateCSCode)
+				{
+					// Finally, create the source code
+					GenerateCode(p.OutFile, codeNamespace, p.EncyMode);
+				}
 			}
 
-			return fOk;
+			return codeNamespace;
 		}
 
 		/// ------------------------------------------------------------------------------------
@@ -442,7 +466,7 @@ $@"-----------------------------------------------------------------------------
 		/// <param name="fileName">Name of the JSON file.</param>
 		/// <returns>The namespace definition with all classes and methods.</returns>
 		/// ------------------------------------------------------------------------------------
-		private CodeNamespace DeserializeData(string fileName)
+		public CodeNamespace DeserializeData(string fileName)
 		{
 			if (!File.Exists(fileName))
 				return null;
