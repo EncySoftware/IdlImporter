@@ -283,7 +283,16 @@ importlib
 				IDLImporter.Logger.Message("importlib " + lib);
 			#endif
 				if (lib != "stdole2.tlb")
-					m_Namespace.Imports.Add(new CodeNamespaceImport(lib.Remove(lib.LastIndexOf(".tlb"))));
+				{
+					var importedLibName = lib.Remove(lib.LastIndexOf(".tlb"));
+					m_Namespace.Imports.Add(new CodeNamespaceImport(importedLibName));
+					if (!m_Namespace.UserData.Contains("ImportLibs"))
+					{
+						m_Namespace.UserData["ImportLibs"] = new List<string>();
+					}
+					var libsList = m_Namespace.UserData["ImportLibs"] as List<string>;
+					libsList.Add(importedLibName);
+				}
 			}
 	;
 

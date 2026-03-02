@@ -166,6 +166,12 @@ Copyright (c) 2002-2022, SIL International. All Rights Reserved.
 							"ValueWrapper",
 							"IDL." + sNamespace,
 					};
+					var libsList = codeNs.UserData["ImportLibs"] as List<string>;
+					if (libsList != null)
+					{
+							foreach(var lib in libsList)
+									cdeclWrapperUses.Add("IDL." + lib);
+					}
 					var resultDir = Path.GetDirectoryName(sOutFile);
 					var cdeclWrapperGen = new CdeclWrapperGenerator(IDLImporter.Logger, resultDir);
 					cdeclWrapperGen.GenerateFromCodeNamespace(codeNs, cdeclWrappersUnit, cdeclWrapperUses);

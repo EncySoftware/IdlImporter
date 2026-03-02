@@ -150,7 +150,7 @@ type
                     m.Params.Add(new ParamDecl(rn, rt));
                     var rh = MakeHolder("Res", rt, ii, usedNames);
                     m.Holders[rn] = rh;
-                    m.ResPref = $"{rn} := {rt}(";
+                    m.ResPref = $"{rh.Name} := {rt}(";
                     m.ResSuff = ")";
                 }
 
